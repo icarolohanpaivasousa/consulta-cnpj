@@ -3,6 +3,13 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    echo "<pre>";
+    print_r($_POST);
+    echo "</pre>";
+    exit;
+}
+
 function validaCNPJ($cnpj) {
     $cnpj = preg_replace('/\D/', '', $cnpj);
     if (strlen($cnpj) != 14) return false;
@@ -21,10 +28,6 @@ function consultarCNPJ($cnpj) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
-echo "<pre>Resposta bruta da API:\n";
-var_dump($response);
-echo "</pre>";
-exit;
 
     if (curl_errno($ch)) {
         return [
