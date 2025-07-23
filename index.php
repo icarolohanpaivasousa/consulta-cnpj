@@ -1,3 +1,6 @@
+<?php
+require_once("consulta_cnpjs.php");
+?>
 <?php if (!empty($mensagemErro)): ?>
     <div style="color: red"><?= $mensagemErro ?></div>
 <?php elseif (!empty($dados)): ?>
