@@ -17,14 +17,23 @@ function consultarCNPJ($cnpj) {
     $token = 'rh3pn2VK8bRcMxcU8bBi1n2rN6iQmbxEGUkrTm2SI5DwOl8BjrglAtZOMQKD';
     $url = "https://api.cnpj.biz/v1/cnpj/$cnpj";
 
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Authorization: Bearer $token"
-    ]);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, "https://api.cnpj.biz/{$cnpj}");
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    "Authorization: Bearer SUA_CHAVE_AQUI"
+]);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // <-- ADICIONE ISTO!
+curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // <-- E ISTO!
+
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+if(curl_errno($ch)) {
+    echo 'Erro cURL: ' . curl_error($ch);
+}
+
+curl_close($ch);
 
     if ($httpCode !== 200) {
         return ['error' => 'Erro ao consultar CNPJ. Código: ' . $httpCode];
