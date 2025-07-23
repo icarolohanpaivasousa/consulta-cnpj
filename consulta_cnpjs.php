@@ -14,50 +14,36 @@ function limparCNPJ($cnpj) {
 }
 
 function consultarCNPJ($cnpj) {
-    $token = 'rh3pn2VK8bRcMxcU8bBi1n2rN6iQmbxEGUkrTm2SI5DwOl8BjrglAtZOMQKD';
-    $url = "https://jsonplaceholder.typicode.com/todos/1";
+    $url = "https://api-publica.speedio.com.br/buscarcnpj?cnpj=$cnpj";
 
-    $ch = curl_init();
-// NÃO use só cnpj.biz
-curl_setopt($ch, CURLOPT_URL, "https://api.cnpj.biz/{$cnpj}");
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    "Authorization: Bearer SUA_CHAVE_AQUI"
-]);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // <-- ADICIONE ISTO!
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // <-- E ISTO!
-
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-if(curl_errno($ch)) {
-    echo 'Erro cURL: ' . curl_error($ch);
-}
-
-curl_close($ch);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
     if ($httpCode !== 200) {
         return ['error' => 'Erro ao consultar CNPJ. Código: ' . $httpCode];
     }
 
     $data = json_decode($response, true);
-    if (!$data || isset($data['message'])) {
+    if (!$data || isset($data['erro'])) {
         return ['error' => 'CNPJ não encontrado ou inválido.'];
     }
 
     return [
-        'Nome' => $data['razao_social'] ?? 'Não informado',
-        'Fantasia' => $data['nome_fantasia'] ?? 'Não informado',
-        'Situacao' => $data['situacao_cadastral'] ?? 'Desconhecida',
+        'Nome' => $data['RAZAO_SOCIAL'] ?? 'Não informado',
+        'Fantasia' => $data['NOME_FANTASIA'] ?? 'Não informado',
+        'Situacao' => $data['STATUS'] ?? 'Desconhecida',
         'Telefones' => array_filter([
-            $data['ddd_telefone_1'] ?? null,
-            $data['ddd_telefone_2'] ?? null
+            $data['DDD_TELEFONE_1'] ?? null,
+            $data['DDD_TELEFONE_2'] ?? null
         ]),
-        'Email' => $data['email'] ?? 'Não informado',
-        'Socios' => isset($data['qsa']) && is_array($data['qsa']) ? 
-            array_map(function($socio) {
+        'Email' => $data['EMAIL'] ?? 'Não informado',
+        'Socios' => isset($data['QSA']) && is_array($data['QSA']) ?
+            array_map(function ($socio) {
                 return $socio['nome'] . ' (' . $socio['qualificacao'] . ')';
-            }, $data['qsa']) : []
+            }, $data['QSA']) : []
     ];
 }
 
