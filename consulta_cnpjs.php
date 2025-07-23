@@ -14,20 +14,18 @@ function limparCNPJ($cnpj) {
 }
 
 function consultarCNPJ($cnpj) {
-    $cnpj = preg_replace('/\D/', '', $cnpj); // Remove caracteres não numéricos
+    $cnpj = preg_replace('/\D/', '', $cnpj);
     $url = "https://api.cnpjs.dev/v1/{$cnpj}";
 
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Tempo máximo de espera
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
 
     if (curl_errno($ch)) {
-        $erro = curl_error($ch);
-        curl_close($ch);
         return [
             "erro" => true,
-            "mensagem" => "Erro cURL: $erro"
+            "mensagem" => "Erro cURL: " . curl_error($ch)
         ];
     }
 
@@ -42,14 +40,19 @@ function consultarCNPJ($cnpj) {
     }
 
     $dados = json_decode($response, true);
+
+    // Verificações seguras
+    $est = $dados["estabelecimento"] ?? [];
+
     return [
         "erro" => false,
         "dados" => [
-            "razao_social" => $dados["razao_social"] ?? '',
-            "nome_fantasia" => $dados["nome_fantasia"] ?? '',
-            "situacao" => $dados["estabelecimento"]["situacao_cadastral"] ?? '',
-            "telefone" => $dados["estabelecimento"]["ddd1"] . $dados["estabelecimento"]["telefone1"] ?? '',
-            "email" => $dados["estabelecimento"]["email"] ?? '',
+            "Nome" => $dados["razao_social"] ?? '',
+            "Fantasia" => $dados["nome_fantasia"] ?? '',
+            "Situacao" => $est["situacao_cadastral"] ?? '',
+            "Telefones" => isset($est["telefone1"]) ? [($est["ddd1"] ?? '') . $est["telefone1"]] : [],
+            "Email" => $est["email"] ?? '',
+            "Socios" => $dados["socios"] ?? []
         ]
     ];
 }
