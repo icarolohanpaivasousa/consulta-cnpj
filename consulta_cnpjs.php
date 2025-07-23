@@ -60,18 +60,67 @@ function consultarCNPJ($cnpj) {
 $cnpjsInvalidos = [];
 $consultaDados = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cnpjs'])) {
-    $linhas = preg_split('/\r\n|\r|\n/', trim($_POST['cnpjs']));
-    foreach ($linhas as $linha) {
-        $cnpjLimpo = limparCNPJ($linha);
-        if (!validaCNPJ($cnpjLimpo)) {
-            $cnpjsInvalidos[] = $linha;
-            continue;
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["cnpj"])) {
+    $cnpj = preg_replace("/[^0-9]/", "", $_POST["cnpj"]);
+
+    $url = "https://api.cnpjs.dev/cnpj/$cnpj";
+    $ch = curl_init($url);
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+
+    curl_close($ch);
+
+    if ($curlError) {
+        echo "Erro cURL: " . $curlError;
+        return;
+    }
+
+    if ($httpCode !== 200) {
+        echo "Erro ao consultar CNPJ. Código: " . $httpCode;
+        return;
+    }
+
+    $data = json_decode($response, true);
+    if (!$data || !isset($data["estabelecimento"])) {
+        echo "Erro: resposta inesperada da API.";
+        return;
+    }
+
+    $est = $data["estabelecimento"];
+
+    // Variáveis com verificação
+    $nome = $data["razao_social"] ?? "Não informado";
+    $fantasia = $est["nome_fantasia"] ?? "Não informado";
+    $situacao = $est["situacao_cadastral"] ?? "Não informado";
+    $telefones = $est["ddd1"] && $est["telefone1"] ? $est["ddd1"] . $est["telefone1"] : "Não informado";
+    $email = $est["email"] ?? "Não informado";
+    $socios = $data["socios"] ?? [];
+
+    // Exibição (exemplo)
+    echo "Nome: " . htmlspecialchars($nome) . "<br>";
+    echo "Fantasia: " . htmlspecialchars($fantasia) . "<br>";
+    echo "Situação: " . htmlspecialchars($situacao) . "<br>";
+    echo "Telefone: " . htmlspecialchars($telefones) . "<br>";
+    echo "Email: " . htmlspecialchars($email) . "<br>";
+    echo "Sócios:<br>";
+
+    if (is_array($socios) && count($socios) > 0) {
+        foreach ($socios as $socio) {
+            echo "- " . htmlspecialchars($socio["nome_socio"] ?? "Desconhecido") . "<br>";
         }
-        $consultaDados[$cnpjLimpo] = consultarCNPJ($cnpjLimpo);
+    } else {
+        echo "Nenhum sócio encontrado.<br>";
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
