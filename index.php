@@ -21,6 +21,10 @@ function consultarCNPJ($cnpj) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
+echo "<pre>Resposta bruta da API:\n";
+var_dump($response);
+echo "</pre>";
+exit;
 
     if (curl_errno($ch)) {
         return [
