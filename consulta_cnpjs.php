@@ -18,6 +18,7 @@ function consultarCNPJ($cnpj) {
     $url = "https://api.cnpj.biz/v1/cnpj/$cnpj";
 
     $ch = curl_init();
+// NÃO use só cnpj.biz
 curl_setopt($ch, CURLOPT_URL, "https://api.cnpj.biz/{$cnpj}");
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
