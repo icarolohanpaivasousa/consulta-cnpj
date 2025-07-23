@@ -15,7 +15,7 @@ function limparCNPJ($cnpj) {
 
 function consultarCNPJ($cnpj) {
     $token = 'rh3pn2VK8bRcMxcU8bBi1n2rN6iQmbxEGUkrTm2SI5DwOl8BjrglAtZOMQKD';
-    $url = "https://api.cnpj.biz/v1/cnpj/$cnpj";
+    $url = "https://jsonplaceholder.typicode.com/todos/1";
 
     $ch = curl_init();
 // NÃO use só cnpj.biz
