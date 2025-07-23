@@ -14,36 +14,43 @@ function limparCNPJ($cnpj) {
 }
 
 function consultarCNPJ($cnpj) {
-    $url = "https://api-publica.speedio.com.br/buscarcnpj?cnpj=$cnpj";
+    $cnpj = preg_replace('/\D/', '', $cnpj); // Remove caracteres não numéricos
+    $url = "https://api.cnpjs.dev/v1/{$cnpj}";
 
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Tempo máximo de espera
     $response = curl_exec($ch);
+
+    if (curl_errno($ch)) {
+        $erro = curl_error($ch);
+        curl_close($ch);
+        return [
+            "erro" => true,
+            "mensagem" => "Erro cURL: $erro"
+        ];
+    }
+
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    if ($httpCode !== 200) {
-        return ['error' => 'Erro ao consultar CNPJ. Código: ' . $httpCode];
+    if ($httpCode != 200) {
+        return [
+            "erro" => true,
+            "mensagem" => "Erro ao consultar CNPJ. Código: $httpCode"
+        ];
     }
 
-    $data = json_decode($response, true);
-    if (!$data || isset($data['erro'])) {
-        return ['error' => 'CNPJ não encontrado ou inválido.'];
-    }
-
+    $dados = json_decode($response, true);
     return [
-        'Nome' => $data['RAZAO_SOCIAL'] ?? 'Não informado',
-        'Fantasia' => $data['NOME_FANTASIA'] ?? 'Não informado',
-        'Situacao' => $data['STATUS'] ?? 'Desconhecida',
-        'Telefones' => array_filter([
-            $data['DDD_TELEFONE_1'] ?? null,
-            $data['DDD_TELEFONE_2'] ?? null
-        ]),
-        'Email' => $data['EMAIL'] ?? 'Não informado',
-        'Socios' => isset($data['QSA']) && is_array($data['QSA']) ?
-            array_map(function ($socio) {
-                return $socio['nome'] . ' (' . $socio['qualificacao'] . ')';
-            }, $data['QSA']) : []
+        "erro" => false,
+        "dados" => [
+            "razao_social" => $dados["razao_social"] ?? '',
+            "nome_fantasia" => $dados["nome_fantasia"] ?? '',
+            "situacao" => $dados["estabelecimento"]["situacao_cadastral"] ?? '',
+            "telefone" => $dados["estabelecimento"]["ddd1"] . $dados["estabelecimento"]["telefone1"] ?? '',
+            "email" => $dados["estabelecimento"]["email"] ?? '',
+        ]
     ];
 }
 
