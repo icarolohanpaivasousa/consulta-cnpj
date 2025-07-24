@@ -3,119 +3,121 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    echo "<pre>";
-    print_r($_POST);
-    echo "</pre>";
-    exit;
-}
-
 function validaCNPJ($cnpj) {
     $cnpj = preg_replace('/\D/', '', $cnpj);
     if (strlen($cnpj) != 14) return false;
     return preg_match('/^\d{14}$/', $cnpj) === 1;
 }
 
-function limparCNPJ($cnpj) {
-    return preg_replace('/\D/', '', $cnpj);
-}
-
-function consultarCNPJ($cnpj) {
+// Nova função com fallback
+function consultaCNPJ($cnpj) {
     $cnpj = preg_replace('/\D/', '', $cnpj);
-    $url = "https://api.cnpjs.dev/v1/{$cnpj}";
 
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    $response = curl_exec($ch);
-
-    if (curl_errno($ch)) {
-        return [
-            "erro" => true,
-            "mensagem" => "Erro cURL: " . curl_error($ch)
-        ];
+    // 1. Speedio
+    $url_speedio = "https://api-publica.speedio.com.br/buscarcnpj?cnpj=$cnpj";
+    $res_speedio = @file_get_contents($url_speedio);
+    if ($res_speedio) {
+        $data = json_decode($res_speedio, true);
+        if (!isset($data['error'])) return $data;
     }
 
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($httpCode != 200) {
-        return [
-            "erro" => true,
-            "mensagem" => "Erro ao consultar CNPJ. Código: $httpCode"
-        ];
-    }
-
-    $dados = json_decode($response, true);
-
-    // Verificações seguras
-    $est = $dados["estabelecimento"] ?? [];
-
-    return [
-        "erro" => false,
-        "dados" => [
-            "Nome" => $dados["razao_social"] ?? '',
-            "Fantasia" => $dados["nome_fantasia"] ?? '',
-            "Situacao" => $est["situacao_cadastral"] ?? '',
-            "Telefones" => isset($est["telefone1"]) ? [($est["ddd1"] ?? '') . $est["telefone1"]] : [],
-            "Email" => $est["email"] ?? '',
-            "Socios" => $dados["socios"] ?? []
+    // 2. ReceitaWS
+    $url_receita = "https://receitaws.com.br/v1/cnpj/$cnpj";
+    $opts = [
+        'http' => [
+            'method' => 'GET',
+            'header' => "User-Agent: ConsultaCNPJ"
         ]
     ];
+    $context = stream_context_create($opts);
+    $res_receita = @file_get_contents($url_receita, false, $context);
+    if ($res_receita) {
+        $data = json_decode($res_receita, true);
+        if (!isset($data['status']) || $data['status'] !== 'ERROR') return $data;
+    }
+
+    // 3. BrasilAPI
+    $url_brasil = "https://brasilapi.com.br/api/cnpj/v1/$cnpj";
+    $res_brasil = @file_get_contents($url_brasil);
+    if ($res_brasil) {
+        $data = json_decode($res_brasil, true);
+        if (!isset($data['message'])) return $data;
+    }
+
+    return ['error' => 'Erro ao consultar CNPJ nas três fontes.'];
 }
 
-$cnpjsInvalidos = [];
 $consultaDados = [];
+$erroGeral = null;
+$cnpjsInvalidos = [];
+$cnpjsValidos = [];
 
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["cnpjs"])) {
-    $linhas = explode("\n", $_POST["cnpjs"]);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $raw = $_POST['cnpjs'] ?? '';
+    $linhas = array_map('trim', explode("\n", $raw));
+
     foreach ($linhas as $linha) {
-        $cnpj = limparCNPJ(trim($linha));
-        if (!validaCNPJ($cnpj)) {
+        if ($linha === '') continue;
+        $cnpj = preg_replace('/\D/', '', $linha);
+        if (validaCNPJ($cnpj)) {
+            $cnpjsValidos[] = $cnpj;
+        } else {
             $cnpjsInvalidos[] = $linha;
-            continue;
         }
+    }
 
-        $resultado = consultarCNPJ($cnpj);
-        $consultaDados[$cnpj] = $resultado;
+    foreach ($cnpjsValidos as $cnpj) {
+        $dados = consultaCNPJ($cnpj);
+        if (isset($dados['error'])) {
+            $consultaDados[$cnpj] = ['error' => $dados['error']];
+        } else {
+            // Mapeamento dos códigos de situação
+            $situacoes = [
+                1 => 'NULA',
+                2 => 'ATIVA',
+                3 => 'SUSPENSA',
+                4 => 'INAPTA',
+                8 => 'BAIXADA'
+            ];
+            $situacaoBruta = $dados['situacao_cadastral'] ?? $dados['situacao'] ?? '---';
+            if (is_numeric($situacaoBruta)) {
+                $situacao = $situacoes[(int)$situacaoBruta] ?? $situacaoBruta;
+            } else {
+                $situacao = $situacaoBruta;
+            }
+
+            $consultaDados[$cnpj] = [
+                'Nome' => $dados['razao_social'] ?? $dados['nome'] ?? '---',
+                'Fantasia' => $dados['nome_fantasia'] ?? $dados['fantasia'] ?? '---',
+                'Situacao' => $situacao,
+                'Telefones' => [],
+                'Email' => !empty($dados['email']) ? $dados['email'] : 'Este CNPJ não possui e-mail cadastrado',
+                'Socios' => [],
+            ];
+
+            $tels = [];
+            if (!empty($dados['telefone'])) {
+                $tels[] = $dados['telefone'];
+            }
+            if (!empty($dados['ddd_telefone_1']) && !empty($dados['telefone_1'])) {
+                $tels[] = "({$dados['ddd_telefone_1']}) {$dados['telefone_1']}";
+            }
+            if (!empty($dados['ddd_telefone_2']) && !empty($dados['telefone_2'])) {
+                $tels[] = "({$dados['ddd_telefone_2']}) {$dados['telefone_2']}";
+            }
+            $consultaDados[$cnpj]['Telefones'] = !empty($tels) ? $tels : ['Este CNPJ não possui telefone cadastrado'];
+
+            if (!empty($dados['qsa']) && is_array($dados['qsa'])) {
+                foreach ($dados['qsa'] as $socio) {
+                    $nome = $socio['nome'] ?? $socio['nome_socio'] ?? '---';
+                    $qual = $socio['qual'] ?? $socio['qualificacao'] ?? $socio['qualificacao_socio'] ?? '---';
+                    $consultaDados[$cnpj]['Socios'][] = "$nome ($qual)";
+                }
+            }
+        }
     }
 }
-if (!empty($consultaDados)) {
-    foreach ($consultaDados as $cnpj => $resultado) {
-        echo "<h3>CNPJ: " . htmlspecialchars($cnpj) . "</h3>";
-        if ($resultado["erro"]) {
-            echo "<p style='color:red'>" . htmlspecialchars($resultado["mensagem"]) . "</p>";
-            continue;
-        }
-
-        $dados = $resultado["dados"];
-
-        echo "Nome: " . htmlspecialchars($dados["Nome"]) . "<br>";
-        echo "Fantasia: " . htmlspecialchars($dados["Fantasia"]) . "<br>";
-        echo "Situação: " . htmlspecialchars($dados["Situacao"]) . "<br>";
-        echo "Telefone(s): ";
-        if (!empty($dados["Telefones"])) {
-            foreach ($dados["Telefones"] as $tel) {
-                echo htmlspecialchars($tel) . " ";
-            }
-        } else {
-            echo "Não informado";
-        }
-        echo "<br>";
-        echo "Email: " . htmlspecialchars($dados["Email"]) . "<br>";
-        echo "Sócios:<br>";
-        if (!empty($dados["Socios"])) {
-            foreach ($dados["Socios"] as $socio) {
-                echo "- " . htmlspecialchars($socio["nome_socio"] ?? "Desconhecido") . "<br>";
-            }
-        } else {
-            echo "Nenhum sócio encontrado.<br>";
-        }
-
-        echo "<hr>";
-    }
-}?>
-    
+?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -562,6 +564,16 @@ if (!empty($consultaDados)) {
         invalidosCount.textContent = `Inválidos: ${invalidos}`;
         btnConsultar.disabled = validos === 0;
     }
+        // Adiciona quebra de linha automática ao digitar 14 dígitos
+    txtCNPJs.addEventListener('input', function () {
+        const linhas = this.value.split('\n');
+        const novaLinha = linhas[linhas.length - 1].replace(/\D/g, '');
+        if (novaLinha.length === 14 && !this.value.endsWith('\n')) {
+            this.value += '\n';
+            atualizarContadores(); // Atualiza contadores automaticamente
+        }
+    });
+
 
     function showToast(msg, dur=2500) {
         toast.textContent = msg;
